@@ -7,7 +7,13 @@ from pathlib import Path
 import pytest
 
 from app.embedder import TfidfEmbedder
-from app.index import Document, SearchIndex, load_corpus
+from app.index import (
+    Document,
+    SearchIndex,
+    _make_snippet,
+    extract_query_terms,
+    load_corpus,
+)
 
 DOCS_DIR = Path(__file__).resolve().parent.parent / "data" / "docs"
 
@@ -88,3 +94,46 @@ def test_k_is_clamped_to_corpus_size(index: SearchIndex) -> None:
 
 def test_blank_query_returns_empty(index: SearchIndex) -> None:
     assert index.query("   ") == []
+
+
+def test_extract_query_terms_drops_stopwords_and_single_chars() -> None:
+    terms = extract_query_terms("How do I lock the Terraform state in S3?")
+    # Stop words ("how", "do", "the", "in") and the single char "i" are removed.
+    assert "the" not in terms
+    assert "in" not in terms
+    assert "i" not in terms
+    # Meaningful tokens survive, lowercased, in first-seen order.
+    assert terms == ["lock", "terraform", "state", "s3"]
+
+
+def test_extract_query_terms_deduplicates_preserving_order() -> None:
+    assert extract_query_terms("cache cache miss cache") == ["cache", "miss"]
+
+
+def test_snippet_short_text_returned_whole() -> None:
+    assert _make_snippet("just a few words", query="words") == "just a few words"
+
+
+def test_snippet_centers_on_matching_passage() -> None:
+    text = "alpha " * 60 + "UNIQUEMARKER lives here " + "omega " * 60
+    snippet = _make_snippet(text, query="uniquemarker", max_chars=80)
+    assert "UNIQUEMARKER" in snippet
+    # A hit deep in the doc is trimmed on both sides, not shown from the head.
+    assert snippet.startswith("...")
+    assert snippet.endswith("...")
+    assert len(snippet) < len(text)
+
+
+def test_snippet_falls_back_to_head_when_query_absent() -> None:
+    text = "alpha " * 100
+    snippet = _make_snippet(text, query="nomatchhere", max_chars=50)
+    assert snippet.startswith("alpha")
+    assert snippet.endswith("...")
+
+
+def test_query_snippet_contains_a_matched_term(index: SearchIndex) -> None:
+    query = "lock terraform state file"
+    result = index.query(query, k=1)[0]
+    terms = extract_query_terms(query)
+    lowered = result.snippet.lower()
+    assert any(term in lowered for term in terms)
