@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>semantic-doc-search</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #1e293b;
+        --border: #334155;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+      }
+      .wrap {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 2.5rem 1.25rem 4rem;
+      }
+      h1 { margin: 0 0 0.25rem; font-size: 1.6rem; }
+      p.tagline { margin: 0 0 1.75rem; color: var(--muted); }
+      form { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+      input[type="search"] {
+        flex: 1;
+        padding: 0.7rem 0.9rem;
+        font-size: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--text);
+      }
+      input[type="search"]:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      button {
+        padding: 0.7rem 1.2rem;
+        font-size: 1rem;
+        border: none;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #04263a;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.6; cursor: default; }
+      .status { color: var(--muted); font-size: 0.9rem; min-height: 1.25rem; }
+      ul { list-style: none; padding: 0; margin: 1rem 0 0; }
+      li {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem 1.1rem;
+        margin-bottom: 0.85rem;
+        background: var(--panel);
+      }
+      .result-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 1rem;
+      }
+      .title { font-weight: 600; font-size: 1.05rem; }
+      .score {
+        font-size: 0.8rem;
+        color: var(--accent);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .snippet { color: var(--muted); font-size: 0.92rem; margin-top: 0.4rem; }
+      .doc-id { color: var(--muted); font-size: 0.78rem; margin-top: 0.5rem; }
+      footer { margin-top: 2.5rem; color: var(--muted); font-size: 0.82rem; }
+      a { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>semantic-doc-search</h1>
+      <p class="tagline">
+        Embeddings-based semantic search over a small cloud &amp; devops docs corpus.
+      </p>
+
+      <form id="search-form">
+        <input
+          id="query"
+          type="search"
+          placeholder="Try: how do I keep a pod healthy?"
+          autocomplete="off"
+          autofocus
+        />
+        <button type="submit" id="submit-btn">Search</button>
+      </form>
+
+      <div class="status" id="status"></div>
+      <ul id="results"></ul>
+
+      <footer>
+        Part of my cloud &amp; AI portfolio &mdash;
+        <a href="https://github.com/matthews-wong">github.com/matthews-wong</a>
+      </footer>
+    </div>
+
+    <script>
+      const form = document.getElementById("search-form");
+      const input = document.getElementById("query");
+      const btn = document.getElementById("submit-btn");
+      const statusEl = document.getElementById("status");
+      const resultsEl = document.getElementById("results");
+
+      function escapeHtml(value) {
+        const div = document.createElement("div");
+        div.textContent = value;
+        return div.innerHTML;
+      }
+
+      async function runSearch(query) {
+        btn.disabled = true;
+        statusEl.textContent = "Searching…";
+        resultsEl.innerHTML = "";
+        try {
+          const url = `/search?q=${encodeURIComponent(query)}&k=5`;
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          renderResults(data);
+        } catch (err) {
+          statusEl.textContent = `Search failed: ${err.message}`;
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      function renderResults(data) {
+        if (!data.results.length) {
+          statusEl.textContent = `No matches for "${data.query}".`;
+          return;
+        }
+        statusEl.textContent = `${data.count} result(s) for "${data.query}".`;
+        for (const r of data.results) {
+          const li = document.createElement("li");
+          li.innerHTML = `
+            <div class="result-head">
+              <span class="title">${escapeHtml(r.title)}</span>
+              <span class="score">score ${r.score.toFixed(4)}</span>
+            </div>
+            <div class="snippet">${escapeHtml(r.snippet)}</div>
+            <div class="doc-id">${escapeHtml(r.doc_id)}.md</div>
+          `;
+          resultsEl.appendChild(li);
+        }
+      }
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const query = input.value.trim();
+        if (query) runSearch(query);
+      });
+    </script>
+  </body>
+</html>
