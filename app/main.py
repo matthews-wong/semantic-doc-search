@@ -15,7 +15,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 
 from app import __version__
-from app.index import SearchIndex
+from app.index import SearchIndex, extract_query_terms
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DOCS_DIR = BASE_DIR / "data" / "docs"
@@ -73,6 +73,7 @@ def search(
     return JSONResponse(
         {
             "query": q,
+            "terms": extract_query_terms(q),
             "count": len(results),
             "results": [
                 {

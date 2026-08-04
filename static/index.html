@@ -76,6 +76,12 @@
         white-space: nowrap;
       }
       .snippet { color: var(--muted); font-size: 0.92rem; margin-top: 0.4rem; }
+      .snippet mark {
+        background: rgba(56, 189, 248, 0.28);
+        color: var(--text);
+        padding: 0 2px;
+        border-radius: 3px;
+      }
       .doc-id { color: var(--muted); font-size: 0.78rem; margin-top: 0.5rem; }
       footer { margin-top: 2.5rem; color: var(--muted); font-size: 0.82rem; }
       a { color: var(--accent); }
@@ -121,6 +127,19 @@
         return div.innerHTML;
       }
 
+      function escapeRegExp(value) {
+        return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+
+      // Wrap each matched query term in the (already HTML-escaped) snippet with
+      // <mark> so the passage that earned the hit stands out.
+      function highlight(snippet, terms) {
+        const escaped = escapeHtml(snippet);
+        if (!terms || !terms.length) return escaped;
+        const pattern = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "gi");
+        return escaped.replace(pattern, "<mark>$1</mark>");
+      }
+
       async function runSearch(query) {
         btn.disabled = true;
         statusEl.textContent = "Searching…";
@@ -151,7 +170,7 @@
               <span class="title">${escapeHtml(r.title)}</span>
               <span class="score">score ${r.score.toFixed(4)}</span>
             </div>
-            <div class="snippet">${escapeHtml(r.snippet)}</div>
+            <div class="snippet">${highlight(r.snippet, data.terms)}</div>
             <div class="doc-id">${escapeHtml(r.doc_id)}.md</div>
           `;
           resultsEl.appendChild(li);

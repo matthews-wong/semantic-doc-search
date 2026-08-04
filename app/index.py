@@ -7,10 +7,12 @@ fly and ranked against the corpus by cosine similarity.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from sklearn.metrics.pairwise import cosine_similarity
 
 from app.embedder import Embedder, TfidfEmbedder
@@ -50,11 +52,69 @@ def _extract_title(doc_id: str, text: str) -> str:
     return doc_id
 
 
-def _make_snippet(text: str, max_chars: int = 200) -> str:
-    """Build a short single-line preview of a document."""
+_TERM_RE = re.compile(r"[a-z0-9]+")
+
+
+def extract_query_terms(query: str) -> list[str]:
+    """Return the distinct lowercase word tokens of ``query`` worth matching.
+
+    Single-character tokens and English stop words are dropped so the terms
+    that survive are the ones the TF-IDF backend actually ranks on -- the same
+    words worth centring a passage on and highlighting. Order is preserved so
+    the UI highlights predictably.
+    """
+    seen: dict[str, None] = {}
+    for token in _TERM_RE.findall(query.lower()):
+        if len(token) > 1 and token not in ENGLISH_STOP_WORDS:
+            seen.setdefault(token, None)
+    return list(seen)
+
+
+def _passage_window(text: str, pos: int, max_chars: int) -> str:
+    """Extract a ``max_chars`` window of ``text`` centred on ``pos``.
+
+    Boundaries snap to whitespace so words are not cut mid-token, and ellipses
+    mark where text was trimmed from either side.
+    """
+    start = max(0, pos - max_chars // 2)
+    end = min(len(text), start + max_chars)
+    start = max(0, end - max_chars)
+    if start > 0:
+        nxt = text.find(" ", start)
+        if 0 <= nxt <= pos:
+            start = nxt + 1
+    if end < len(text):
+        prev = text.rfind(" ", 0, end)
+        if prev > pos:
+            end = prev
+    snippet = text[start:end].strip()
+    if start > 0:
+        snippet = "... " + snippet
+    if end < len(text):
+        snippet = snippet + " ..."
+    return snippet
+
+
+def _make_snippet(text: str, query: str | None = None, max_chars: int = 200) -> str:
+    """Build a short single-line preview of a document.
+
+    When ``query`` matches text in the document, the preview is centred on the
+    first matching passage rather than the document head, so results show *why*
+    they matched. Falls back to the document head when nothing matches.
+    """
     collapsed = " ".join(text.split())
     if len(collapsed) <= max_chars:
         return collapsed
+
+    if query:
+        lowered = collapsed.lower()
+        first = min(
+            (idx for idx in (lowered.find(t) for t in extract_query_terms(query)) if idx != -1),
+            default=-1,
+        )
+        if first != -1:
+            return _passage_window(collapsed, first, max_chars)
+
     return collapsed[:max_chars].rstrip() + "..."
 
 
@@ -157,7 +217,7 @@ class SearchIndex:
                     doc_id=doc.doc_id,
                     title=doc.title,
                     score=float(scores[idx]),
-                    snippet=_make_snippet(doc.text),
+                    snippet=_make_snippet(doc.text, query=text),
                 )
             )
         return results
