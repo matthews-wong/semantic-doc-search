@@ -38,9 +38,56 @@ flowchart LR
 The `Embedder` protocol is the seam: swap the backend and everything downstream
 (indexing, ranking, API) stays the same.
 
+## Swapping in a real embedding model
+
+The default `TfidfEmbedder` captures *lexical* similarity and runs offline. To
+capture *semantic* similarity, implement the same two-method `Embedder`
+protocol (`app/embedder.py`) with a transformer model — nothing else changes:
+
+```python
+# app/embedder.py (or a new module)
+from __future__ import annotations
+
+import numpy as np
+from sentence_transformers import SentenceTransformer
+
+
+class SentenceTransformerEmbedder:
+    """Dense semantic embeddings via sentence-transformers."""
+
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
+        self._model = SentenceTransformer(model_name)
+
+    def fit(self, documents: list[str]) -> "SentenceTransformerEmbedder":
+        # Pretrained models learn no per-corpus state, so fit is a no-op.
+        return self
+
+    def encode(self, texts: list[str]) -> np.ndarray:
+        # normalize_embeddings=True keeps cosine similarity meaningful.
+        return self._model.encode(
+            texts, normalize_embeddings=True
+        ).astype(np.float32)
+```
+
+Then inject it where the index is built — the `SearchIndex` and `from_dir`
+constructors already accept an `embedder`:
+
+```python
+# app/main.py, inside get_index()
+from app.embedder import SentenceTransformerEmbedder
+
+return SearchIndex.from_dir(DOCS_DIR, embedder=SentenceTransformerEmbedder())
+```
+
+Add `sentence-transformers` to `requirements.txt`. Because it downloads model
+weights on first use, it is intentionally *not* a default dependency — the demo
+stays network-free out of the box.
+
 ## Features
 
 - Semantic ranking of documents by cosine similarity over embedding vectors.
+- Match-aware result snippets: the preview centres on the matching passage and
+  the UI highlights query terms.
 - Pluggable `Embedder` protocol with an offline TF-IDF default.
 - FastAPI service: `GET /`, `GET /health`, `GET /search?q=&k=`.
 - Minimal vanilla-JS search page — no external CDNs, no build step.
@@ -80,6 +127,14 @@ docker build -t semantic-doc-search .
 docker run --rm -p 8000:8000 semantic-doc-search
 ```
 
+Or, for a one-command run with a built-in health check:
+
+```bash
+docker compose up --build
+```
+
+Then open <http://localhost:8000>.
+
 ## Usage
 
 Open the web UI at <http://localhost:8000> and type a natural-language query,
@@ -98,16 +153,23 @@ Example response:
 ```json
 {
   "query": "how do I keep a pod healthy",
+  "terms": ["pod", "healthy"],
   "count": 3,
   "results": [
     {
       "doc_id": "kubernetes-probes",
       "title": "Kubernetes Health Probes",
-      "score": 0.4213,
-      "snippet": "# Kubernetes Health Probes Kubernetes uses probes to decide..."
+      "score": 0.1201,
+      "snippet": "# Kubernetes Health Probes Kubernetes uses probes to decide whether a container is healthy and ready to serve traffic..."
     }
   ]
 }
+```
+
+The `snippet` is centred on the matching passage and `terms` lists the query
+words worth highlighting; the web UI wraps them in `<mark>`.
+
+```
 ```
 
 Interactive API docs are available at <http://localhost:8000/docs>.
@@ -125,9 +187,11 @@ semantic-doc-search/
 │   └── index.html       # minimal search UI (vanilla JS fetch)
 ├── data/docs/           # sample Markdown corpus
 ├── tests/
-│   └── test_index.py    # indexing + semantic-match tests
+│   ├── test_index.py    # indexing + semantic-match + snippet tests
+│   └── test_api.py      # /health + /search HTTP contract tests
 ├── .github/workflows/ci.yml
 ├── Dockerfile
+├── docker-compose.yml
 ├── .dockerignore
 ├── pyproject.toml
 ├── requirements.txt
