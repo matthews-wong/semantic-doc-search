@@ -89,7 +89,8 @@ stays network-free out of the box.
 - Match-aware result snippets: the preview centres on the matching passage and
   the UI highlights query terms.
 - Pluggable `Embedder` protocol with an offline TF-IDF default.
-- FastAPI service: `GET /`, `GET /health`, `GET /search?q=&k=`.
+- FastAPI service: `GET /`, `GET /health`, `GET /search?q=&k=&min_score=`.
+- Optional `min_score` threshold to drop weak/unrelated matches from results.
 - Minimal vanilla-JS search page — no external CDNs, no build step.
 - Ships with 8 realistic cloud / devops / AI sample docs.
 - Tests, ruff linting, a Dockerfile, and GitHub Actions CI.
@@ -146,6 +147,9 @@ curl "http://localhost:8000/health"
 
 # Search (URL-encode the query)
 curl "http://localhost:8000/search?q=how%20do%20I%20keep%20a%20pod%20healthy&k=3"
+
+# Drop weak matches: only return hits scoring at least min_score (0.0-1.0)
+curl "http://localhost:8000/search?q=how%20do%20I%20keep%20a%20pod%20healthy&k=5&min_score=0.05"
 ```
 
 Example response:
@@ -167,7 +171,9 @@ Example response:
 ```
 
 The `snippet` is centred on the matching passage and `terms` lists the query
-words worth highlighting; the web UI wraps them in `<mark>`.
+words worth highlighting; the web UI wraps them in `<mark>`. Pass `min_score`
+(0.0-1.0) to exclude results below a cosine-similarity threshold — handy for
+suppressing barely-relevant hits on a sparse corpus.
 
 ```
 ```

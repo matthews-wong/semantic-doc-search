@@ -96,6 +96,31 @@ def test_blank_query_returns_empty(index: SearchIndex) -> None:
     assert index.query("   ") == []
 
 
+def test_min_score_drops_weak_matches(index: SearchIndex) -> None:
+    query = "how do I keep a pod healthy and restart it"
+    unfiltered = index.query(query, k=5)
+    assert len(unfiltered) >= 2, "need multiple hits to exercise the threshold"
+
+    # A threshold just above the weakest hit drops it while keeping the top hit.
+    weakest = unfiltered[-1].score
+    threshold = weakest + 1e-6
+    filtered = index.query(query, k=5, min_score=threshold)
+
+    assert filtered, "the top match should survive the threshold"
+    assert all(r.score >= threshold for r in filtered)
+    assert len(filtered) < len(unfiltered)
+
+
+def test_min_score_above_one_returns_nothing(index: SearchIndex) -> None:
+    # Cosine similarity is bounded by 1.0, so nothing clears a threshold above it.
+    assert index.query("deployment", k=5, min_score=1.01) == []
+
+
+def test_min_score_zero_matches_default_behavior(index: SearchIndex) -> None:
+    query = "deployment"
+    assert index.query(query, k=5) == index.query(query, k=5, min_score=0.0)
+
+
 def test_extract_query_terms_drops_stopwords_and_single_chars() -> None:
     terms = extract_query_terms("How do I lock the Terraform state in S3?")
     # Stop words ("how", "do", "the", "in") and the single char "i" are removed.

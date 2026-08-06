@@ -66,10 +66,19 @@ def health() -> JSONResponse:
 def search(
     q: str = Query("", description="Free-text search query."),
     k: int = Query(5, ge=1, le=50, description="Number of results to return."),
+    min_score: float = Query(
+        0.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Drop results scoring below this cosine similarity (0.0-1.0). "
+            "Defaults to 0.0, which keeps every top-k hit."
+        ),
+    ),
 ) -> JSONResponse:
-    """Return the ``k`` documents most relevant to query ``q``."""
+    """Return up to ``k`` documents relevant to ``q``, above ``min_score``."""
     index = get_index()
-    results = index.query(q, k=k)
+    results = index.query(q, k=k, min_score=min_score)
     return JSONResponse(
         {
             "query": q,

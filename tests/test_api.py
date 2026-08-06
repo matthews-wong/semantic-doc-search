@@ -55,3 +55,26 @@ def test_blank_query_returns_no_results(client: TestClient) -> None:
 def test_k_out_of_range_is_rejected(client: TestClient) -> None:
     assert client.get("/search", params={"q": "deploy", "k": 0}).status_code == 422
     assert client.get("/search", params={"q": "deploy", "k": 999}).status_code == 422
+
+
+def test_min_score_filters_results(client: TestClient) -> None:
+    # An impossibly high threshold (>1.0 is rejected; 1.0 clears no real hit)
+    # leaves an empty result set without changing the request's shape.
+    body = client.get(
+        "/search", params={"q": "keep a pod healthy", "k": 5, "min_score": 1.0}
+    ).json()
+    assert body["count"] == 0
+    assert body["results"] == []
+    # Terms are still reported so the UI can echo the parsed query.
+    assert body["terms"] == ["pod", "healthy"]
+
+
+def test_min_score_out_of_range_is_rejected(client: TestClient) -> None:
+    assert (
+        client.get("/search", params={"q": "deploy", "min_score": -0.1}).status_code
+        == 422
+    )
+    assert (
+        client.get("/search", params={"q": "deploy", "min_score": 1.5}).status_code
+        == 422
+    )

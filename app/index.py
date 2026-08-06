@@ -185,16 +185,20 @@ class SearchIndex:
         self._matrix = self.embedder.encode(texts)
         return self
 
-    def query(self, text: str, k: int = 5) -> list[SearchResult]:
+    def query(self, text: str, k: int = 5, min_score: float = 0.0) -> list[SearchResult]:
         """Return the ``k`` documents most similar to ``text``.
 
         Args:
             text: The free-text query.
             k: Maximum number of results to return.
+            min_score: Minimum cosine similarity a document must reach to be
+                included. Defaults to 0.0, which keeps every top-``k`` hit
+                (including unrelated ones); raise it to drop weak matches so the
+                result may be shorter than ``k`` -- or empty.
 
         Returns:
             Results sorted by descending cosine similarity. Empty if the query
-            is blank.
+            is blank or nothing clears ``min_score``.
 
         Raises:
             RuntimeError: If the index has not been built.
@@ -211,12 +215,16 @@ class SearchIndex:
         top_indices = np.argsort(scores)[::-1][:k]
         results: list[SearchResult] = []
         for idx in top_indices:
+            score = float(scores[idx])
+            # Indices are score-descending, so the first miss ends the run.
+            if score < min_score:
+                break
             doc = self.documents[int(idx)]
             results.append(
                 SearchResult(
                     doc_id=doc.doc_id,
                     title=doc.title,
-                    score=float(scores[idx]),
+                    score=score,
                     snippet=_make_snippet(doc.text, query=text),
                 )
             )
