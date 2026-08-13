@@ -212,7 +212,12 @@ class SearchIndex:
         query_vec = self.embedder.encode([text])
         scores = cosine_similarity(query_vec, self._matrix)[0]
 
-        top_indices = np.argsort(scores)[::-1][:k]
+        # Sort by descending score with a *stable* tie-break so equal-scoring
+        # documents keep corpus order (doc_id ascending, per ``load_corpus``).
+        # ``argsort(scores)[::-1]`` would reverse ties into doc_id-descending
+        # order and relies on numpy's unstable default sort; negating and
+        # keeping the stable kind gives deterministic, documented ordering.
+        top_indices = np.argsort(-scores, kind="stable")[:k]
         results: list[SearchResult] = []
         for idx in top_indices:
             score = float(scores[idx])

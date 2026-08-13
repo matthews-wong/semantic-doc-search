@@ -87,6 +87,26 @@ def test_topical_queries_match_expected_doc(
     assert results[0].doc_id == expected_doc
 
 
+def test_tied_scores_break_ties_by_doc_id() -> None:
+    """Identical docs tie at score 1.0 and rank in stable doc_id order.
+
+    The corpus is loaded doc_id-ascending for determinism; a descending sort
+    must preserve that among equal scores rather than reversing it.
+    """
+    shared = "alpha beta gamma shared terms here"
+    docs = [
+        Document("aaa", "A", shared),
+        Document("bbb", "B", shared),
+        Document("zzz", "Z", "completely unrelated words xylophone"),
+    ]
+    results = SearchIndex(docs).build().query(shared, k=3)
+
+    assert [r.doc_id for r in results] == ["aaa", "bbb", "zzz"]
+    # The two identical docs genuinely tie at the top.
+    assert results[0].score == pytest.approx(results[1].score)
+    assert results[0].score == pytest.approx(1.0)
+
+
 def test_k_is_clamped_to_corpus_size(index: SearchIndex) -> None:
     results = index.query("deployment", k=1000)
     assert len(results) == len(index.documents)
