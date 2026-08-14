@@ -14,3 +14,6 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+# Put the repo root on sys.path so tests can `import app` under a bare
+# `pytest` invocation (CI installs requirements only, no editable install).
+pythonpath = ["."]
